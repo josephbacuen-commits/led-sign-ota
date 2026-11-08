@@ -1,11 +1,25 @@
 # Builds the LED sign sketch and makes the files for an update by SMS:
 #   firmware.bin.gz.000, .001, ...  the compressed firmware in 64 KB parts
 #                                   (the modem cannot hold the whole file)
-#   latest.txt                      "<CODE_VERSION> <md5> <size> <parts>"
+#   latest.txt                      "<CODE_VERSION> <md5> <size> <parts> <target>"
 # Commit and push them, wait ~5 min (GitHub raw cache), then text UPDATE.
 # Bump CODE_VERSION in the sketch first: the sign skips a version it already runs.
+#
+# -Target picks which signs install it (by their DEVICENAME), default ALL:
+#   .\publish.ps1                     every sign
+#   .\publish.ps1 -Target LED1        only LED1
+#   .\publish.ps1 -Target LED1,LED3   only LED1 and LED3
+# Signs older than v3.14 ignore the target and install it anyway.
+
+param([string[]]$Target = @('ALL'))
 
 $ErrorActionPreference = 'Stop'
+$names = @($Target | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim().ToUpper() } | Where-Object { $_ })
+foreach ($n in $names) {
+  if ($n -notmatch '^[A-Z0-9_-]{1,16}$') { throw "Bad target name: $n" }
+}
+if ($names.Count -eq 0 -or $names -contains 'ALL') { $names = @('ALL') }
+$targetText = $names -join ','
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $sketch = Join-Path $here '..\Air780ScrollWith-Time_v2\Air780ScrollWith-Time_v2.ino'
 $build = Join-Path $env:TEMP 'led-ota-build'
@@ -40,6 +54,6 @@ for ($i = 0; $i -lt $parts; $i++) {
 }
 
 $md5 = [BitConverter]::ToString([Security.Cryptography.MD5]::Create().ComputeHash($data)).Replace('-', '').ToLower()
-[IO.File]::WriteAllText((Join-Path $here 'latest.txt'), "$version $md5 $($data.Length) $parts`n")
+[IO.File]::WriteAllText((Join-Path $here 'latest.txt'), "$version $md5 $($data.Length) $parts $targetText`n")
 
-"$version  $($data.Length) bytes in $parts parts  md5 $md5"
+"$version  $($data.Length) bytes in $parts parts  md5 $md5  for $targetText"
